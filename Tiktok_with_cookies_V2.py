@@ -126,15 +126,21 @@ class TikTokAutoDM:
         print("\n> Membuka browser...")
         
         chrome_options = uc.ChromeOptions()
+        chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--no-default-browser-check")
+        chrome_options.add_argument("--disable-setuid-sandbox")
+        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--no-zygote")
+        chrome_options.add_argument("--window-size=1280,720")
+        chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
         
-        driver = uc.Chrome(options=chrome_options)
+        driver = uc.Chrome(
+            options=chrome_options,
+            browser_executable_path="/usr/bin/chromium"
+        )
         
         # Buka TikTok
         print("> Membuka TikTok...")
