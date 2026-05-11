@@ -168,6 +168,11 @@ class TikTokAutoDM:
                     chrome_options.add_argument("--disable-dev-shm-usage")
                     chrome_options.add_argument("--single-process")
                     chrome_options.add_argument("--no-zygote")
+                    chrome_options.add_argument("--disable-software-rasterizer")
+                    chrome_options.add_argument("--disable-extensions")
+                    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+                    chrome_options.add_argument("--remote-debugging-port=9222")
+                    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
                     chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
                     
                     service = Service(chromedriver_path)
@@ -199,6 +204,11 @@ class TikTokAutoDM:
         
         # Buka TikTok
         print("> Membuka TikTok...")
+        try:
+            print(f"> Debug: Driver title = {driver.title}")
+        except:
+            pass
+        
         driver.get("https://www.tiktok.com")
         time.sleep(3)
         
