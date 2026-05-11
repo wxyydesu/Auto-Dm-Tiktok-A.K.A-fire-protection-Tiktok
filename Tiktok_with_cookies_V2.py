@@ -10,11 +10,12 @@ from datetime import datetime
 
 os.environ['DISPLAY'] = ':99'
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import undetected_chromedriver as uc
 
 class TikTokAutoDM:
     def __init__(self):
@@ -125,59 +126,75 @@ class TikTokAutoDM:
         
         print("\n> Membuka browser...")
         
-        chrome_options = uc.ChromeOptions()
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--single-process")
-        chrome_options.add_argument("--no-zygote")
-        chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
-        
-        # List of Chromium paths to try
-        chromium_paths = [
-            ("/data/data/com.termux/files/usr/bin/chromium-browser", 146),  # Termux path
-            ("/usr/bin/chromium-browser", None),
-            ("/usr/bin/chromium", None),
-            ("/snap/bin/chromium", None),
-            ("/opt/chromium/chrome", None),
+        # Chromium and ChromeDriver paths
+        chromium_configs = [
+            {
+                "chromium": "/data/data/com.termux/files/usr/bin/chromium-browser",
+                "chromedriver": "/data/data/com.termux/files/usr/bin/chromedriver",
+                "label": "Termux"
+            },
+            {
+                "chromium": "/usr/bin/chromium-browser",
+                "chromedriver": "/usr/bin/chromedriver",
+                "label": "Linux standard"
+            },
+            {
+                "chromium": "/usr/bin/chromium",
+                "chromedriver": "/usr/bin/chromedriver",
+                "label": "Linux (chromium)"
+            },
+            {
+                "chromium": "/snap/bin/chromium",
+                "chromedriver": "/snap/bin/chromium.chromedriver",
+                "label": "Snap"
+            },
         ]
         
         driver = None
-        for path, version in chromium_paths:
-            if os.path.exists(path):
+        for config in chromium_configs:
+            chromium_path = config["chromium"]
+            chromedriver_path = config["chromedriver"]
+            label = config["label"]
+            
+            if os.path.exists(chromium_path) and os.path.exists(chromedriver_path):
                 try:
-                    print(f"> Mencoba Chromium: {path}")
-                    if version:
-                        driver = uc.Chrome(
-                            options=chrome_options,
-                            browser_executable_path=path,
-                            version_main=version
-                        )
-                        print(f"✅ Berhasil dengan Chromium {version} di: {path}")
-                    else:
-                        driver = uc.Chrome(
-                            options=chrome_options,
-                            browser_executable_path=path
-                        )
-                        print(f"✅ Berhasil dengan Chromium di: {path}")
+                    print(f"> Mencoba Chrome Driver ({label}): {chromedriver_path}")
+                    
+                    chrome_options = Options()
+                    chrome_options.binary_location = chromium_path
+                    chrome_options.add_argument("--headless=new")
+                    chrome_options.add_argument("--disable-gpu")
+                    chrome_options.add_argument("--no-sandbox")
+                    chrome_options.add_argument("--disable-dev-shm-usage")
+                    chrome_options.add_argument("--single-process")
+                    chrome_options.add_argument("--no-zygote")
+                    chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
+                    
+                    service = Service(chromedriver_path)
+                    driver = webdriver.Chrome(
+                        service=service,
+                        options=chrome_options
+                    )
+                    print(f"✅ Berhasil dengan {label}")
                     break
                 except Exception as e:
                     print(f"   ❌ Gagal: {str(e)[:80]}...")
                     continue
         
         if driver is None:
-            print("\n❌ Semua path Chromium gagal!")
-            print("\n💡 Untuk Termux proot Ubuntu:")
-            print("   1. Cek versi Chromium:")
-            print("      chromium-browser --version")
-            print("   2. Gunakan path yang sesuai:")
-            print("      dpkg -L chromium | grep bin/chromium")
-            print("\n💡 Untuk Desktop Linux:")
-            print("   1. Install Chromium:")
+            print("\n❌ Semua Chrome Driver gagal!")
+            print("\n💡 Untuk Termux:")
+            print("   Pastikan Chromium sudah terinstall:")
             print("      apt update && apt install -y chromium-browser")
+            print("   Verify:")
+            print("      chromium-browser --version")
+            print("      which chromedriver")
+            print("\n💡 Untuk Linux Desktop:")
+            print("   1. Install Chromium:")
+            print("      apt update && apt install -y chromium-browser chromium-chromedriver")
             print("   2. Verify:")
             print("      which chromium-browser")
+            print("      which chromedriver")
             return False
         
         # Buka TikTok
