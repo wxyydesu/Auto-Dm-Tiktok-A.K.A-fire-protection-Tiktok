@@ -116,6 +116,15 @@ class TikTokAutoDM:
     def send_dm(self, username, message):
         """Kirim DM ke username tertentu"""
         
+        # Prepare temp chrome profile folder
+        chrome_profile_dir = "/tmp/chrome-profile"
+        if not os.path.exists(chrome_profile_dir):
+            try:
+                os.makedirs(chrome_profile_dir, exist_ok=True)
+                print(f"> Chrome profile dir siap: {chrome_profile_dir}")
+            except Exception as e:
+                print(f"> Warning: Tidak bisa buat {chrome_profile_dir}: {e}")
+        
         print("\n" + "="*60)
         print("  MENGIRIM DM VIA BROWSER")
         print("="*60)
@@ -163,6 +172,7 @@ class TikTokAutoDM:
                     chrome_options = Options()
                     chrome_options.binary_location = chromium_path
                     chrome_options.add_argument("--headless=new")
+                    chrome_options.add_argument("--window-size=1280,720")
                     chrome_options.add_argument("--disable-gpu")
                     chrome_options.add_argument("--no-sandbox")
                     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -173,7 +183,12 @@ class TikTokAutoDM:
                     chrome_options.add_argument("--disable-features=VizDisplayCompositor")
                     chrome_options.add_argument("--remote-debugging-port=9222")
                     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-                    chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
+                    # Memory pressure fix (CRITICAL untuk Proot/container tanpa /dev/shm)
+                    chrome_options.add_argument("--memory-pressure-off")
+                    chrome_options.add_argument("--disable-breakpad")
+                    chrome_options.add_argument("--disable-crash-reporter")
+                    # Gunakan /tmp untuk profile (lebih stable dari /root)
+                    chrome_options.add_argument("--user-data-dir=/tmp/chrome-profile")
                     
                     service = Service(chromedriver_path)
                     driver = webdriver.Chrome(
@@ -435,6 +450,16 @@ def run_schedule_loop():
 
 def main():
     clear_screen()
+    
+    # Cleanup old chrome profile (avoid cache issues)
+    chrome_profile_dir = "/tmp/chrome-profile"
+    if os.path.exists(chrome_profile_dir):
+        try:
+            import shutil
+            shutil.rmtree(chrome_profile_dir)
+            print(f"> Cleanup old chrome profile: {chrome_profile_dir}")
+        except Exception as e:
+            print(f"> Warning: Tidak bisa cleanup profile: {e}")
     
     print("\n" + "="*60)
     print("  TIKTOK AUTO DM - BY WXYYDESU")
