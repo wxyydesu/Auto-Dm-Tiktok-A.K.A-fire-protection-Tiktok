@@ -3,11 +3,13 @@
 ## ⚙️ Persyaratan Sistem
 
 ### Opsi 1: Windows/Mac/Linux (Desktop)
+
 - Python 3.8 atau lebih tinggi
 - Google Chrome atau Chromium
 - pip (Python package manager)
 
 ### Opsi 2: Termux (Android dengan proot)
+
 - Termux aplikasi (dari F-Droid)
 - Paket proot-distro
 - Ubuntu distro (atau Linux lainnya)
@@ -71,6 +73,7 @@ pip install -r requirements.txt
 ```
 
 **Daftar Package:**
+
 - `requests` - HTTP library
 - `selenium` - Browser automation
 - `schedule` - Job scheduling
@@ -85,24 +88,25 @@ Script memerlukan cookies dari akun TikTok Anda.
 #### Cara Mendapatkan Cookies:
 
 1. **Install Extension EditThisCookie**
+
    - Buka Chrome/Chromium
    - Buka [Chrome Web Store - EditThisCookie](https://chrome.google.com/webstore)
    - Cari "EditThisCookie" dan install
-
 2. **Export Cookies dari TikTok**
+
    - Buka https://www.tiktok.com
    - Login dengan akun TikTok Anda
    - Klik icon **EditThisCookie** di top-right browser
    - Klik tombol **Export** (icon panah keluar)
    - Klik **Copy as JSON**
    - Cookies sudah di-copy ke clipboard
-
 3. **Jalankan Script Pertama Kali**
+
    ```bash
    python Tiktok_with_cookies_V2.py
    ```
-
 4. **Pilih Opsi 1 (Belum ada cookies)**
+
    - Script akan meminta Anda paste cookies JSON
    - Paste hasil dari EditThisCookie
    - Ketik `done` jika sudah selesai paste
@@ -144,6 +148,7 @@ PILIH METODE PENGIRIMAN
 5. Script akan membuka browser dan mengirim DM
 
 **Output:**
+
 - Screenshot akan disimpan di folder project
 - Log pengiriman di `dm_log.txt`
 
@@ -160,6 +165,7 @@ PILIH METODE PENGIRIMAN
 5. Script akan berjalan terus dan mengirim DM pada jam yang ditentukan
 
 **Contoh:**
+
 ```
 Jam: 10
 Menit: 30
@@ -179,6 +185,7 @@ Menit: 30
 5. Konfirmasi dengan `y`
 
 **Contoh:**
+
 ```
 Hari: 5 (Jumat)
 Jam: 14
@@ -219,6 +226,7 @@ pip3 install requests selenium schedule undetected-chromedriver
 ### Setup Display Server (Untuk Headless):
 
 Script sudah menyertakan:
+
 ```python
 os.environ['DISPLAY'] = ':99'
 ```
@@ -255,17 +263,20 @@ GMAIL_METHOD/
 ### Error: "File cookies_backup.json tidak ditemukan"
 
 **Solusi:**
+
 - Jalankan script dan pilih opsi 1 untuk membuat cookies
 - Paste cookies dari EditThisCookie
 
 ### Error: "Textarea tidak ditemukan"
 
 **Kemungkinan Penyebab:**
+
 - HTML TikTok berubah
 - Timeout terlalu singkat
 - Akun target tidak bisa di-DM
 
 **Solusi:**
+
 - Tunggu beberapa detik sebelum mengirim
 - Cek apakah akun target bisa menerima DM
 - Lihat screenshot `03_no_textarea.png`
@@ -275,12 +286,14 @@ GMAIL_METHOD/
 **Penyebab:** Akun target tidak bisa di-DM (privacy setting)
 
 **Solusi:**
+
 - Ubah akun target
 - Lihat screenshot `02_no_message_button.png`
 
 ### Chrome crashes di Termux
 
 **Solusi:**
+
 ```bash
 # Gunakan argument tambahan di ChromeOptions:
 chrome_options.add_argument("--no-sandbox")
@@ -292,6 +305,7 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 ### Cookies expired/tidak valid
 
 **Solusi:**
+
 - Delete `cookies_backup.json`
 - Jalankan script lagi dan update cookies dengan export baru dari EditThisCookie
 
@@ -345,6 +359,7 @@ Jika mengalami masalah:
 ## 📝 Catatan Penting
 
 ⚠️ **DISCLAIMER:**
+
 - Script ini untuk tujuan edukasi
 - Gunakan dengan bijak dan tidak untuk spam
 - TikTok bisa ban akun yang spam/abuse
@@ -356,6 +371,7 @@ Jika mengalami masalah:
 ## 🔄 Update Log
 
 ### V2 (Current)
+
 - ✅ Menggunakan `undetected-chromedriver`
 - ✅ Support Termux dengan proot Ubuntu
 - ✅ Display environment variable untuk headless mode

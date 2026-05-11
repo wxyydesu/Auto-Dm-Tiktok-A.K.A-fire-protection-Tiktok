@@ -5,6 +5,7 @@ import re
 import os
 import schedule
 import threading
+import random
 from datetime import datetime
 
 os.environ['DISPLAY'] = ':99'
@@ -128,6 +129,10 @@ class TikTokAutoDM:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--no-default-browser-check")
         
         driver = uc.Chrome(options=chrome_options)
         
@@ -229,7 +234,7 @@ class TikTokAutoDM:
                 # Kirim pesan
                 for char in message:
                     textarea.send_keys(char)
-                    time.sleep(0.02)
+                    time.sleep(random.uniform(0.03, 0.12))
                 
                 time.sleep(0.5)
                 textarea.send_keys(Keys.RETURN)
