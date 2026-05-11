@@ -7,6 +7,10 @@
 
 set -u
 
+# Bersihkan environment Termux yang konflik dengan proot Ubuntu
+unset LD_PRELOAD
+unset LD_LIBRARY_PATH
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -50,6 +54,12 @@ print_warning() {
 check_environment() {
     print_status "Memeriksa environment..."
     
+    # Check bc command (dipakai untuk calculate crash rate)
+    if ! command -v bc &> /dev/null; then
+        print_warning "Command 'bc' tidak ditemukan"
+        print_status "Install dengan: apt update && apt install -y bc"
+    fi
+    
     if [ ! -f "$BOT_SCRIPT" ]; then
         print_error "Script $BOT_SCRIPT tidak ditemukan!"
         exit 1
@@ -76,7 +86,8 @@ run_bot() {
     # Run bot with output logging
     python3 -u "$BOT_SCRIPT" 2>&1 | tee -a "$LOG_FILE"
     
-    local exit_code=$?
+    # Use PIPESTATUS[0] untuk capture exit code Python (tee menutupi exit code)
+    local exit_code=${PIPESTATUS[0]}
     
     if [ $exit_code -eq 0 ]; then
         print_success "Bot selesai normal (exit code: 0)"

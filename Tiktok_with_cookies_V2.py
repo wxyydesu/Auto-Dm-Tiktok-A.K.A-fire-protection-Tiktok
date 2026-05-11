@@ -341,9 +341,30 @@ class TikTokAutoDM:
             return False
     
     def run_scheduled_dm(self, username, message):
-        """Wrapper untuk schedule"""
+        """Wrapper untuk schedule dengan retry logic"""
         print(f"\n>>> Menjalankan DM terjadwal untuk @{username} <<<")
-        self.send_dm(username, message)
+        
+        retry = 0
+        max_retry = 3
+        
+        while retry < max_retry:
+            try:
+                success = self.send_dm(username, message)
+                
+                if success:
+                    print("\n---DM berhasil terkirim! ---")
+                    break
+                    
+            except Exception as e:
+                print(f"\n❌ Error: {e}")
+            
+            retry += 1
+            if retry < max_retry:
+                print(f"\n> Retry {retry}/{max_retry} dalam 10 detik...")
+                time.sleep(10)
+            else:
+                print(f"\n❌ Gagal setelah {max_retry} percobaan")
+        
         print(f"\n> Menunggu jadwal berikutnya...")
         
         if self.schedule_type == "daily":
@@ -475,7 +496,27 @@ def main():
         konfirmasi = input("\nKirim DM? (y/n): ").strip().lower()
         
         if konfirmasi == 'y':
-            bot.send_dm(username, pesan)
+            # Auto-retry logic untuk send sekarang
+            retry = 0
+            max_retry = 3
+            
+            while retry < max_retry:
+                try:
+                    success = bot.send_dm(username, pesan)
+                    
+                    if success:
+                        print("\n--- Pengiriman DM selesai! ---")
+                        break
+                        
+                except Exception as e:
+                    print(f"\n❌ Error: {e}")
+                
+                retry += 1
+                if retry < max_retry:
+                    print(f"\n> Retry {retry}/{max_retry} dalam 10 detik...")
+                    time.sleep(10)
+                else:
+                    print(f"\n❌ Gagal setelah {max_retry} percobaan")
         else:
             print("> Dibatalkan")
     
