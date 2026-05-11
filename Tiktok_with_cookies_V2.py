@@ -84,51 +84,121 @@ class TikTokAutoDM:
     def wait_for_textarea(self, driver, timeout=15):
         """Optimasi pencarian textarea berdasarkan struktur HTML TikTok dengan robust waiting"""
         print("> Mencari textarea...")
-        print(f"> Debug (start textarea search): Driver title = '{driver.title}'")
         
-        # Selector berdasarkan struktur HTML yang diberikan
         textarea_selectors = [
-            # Selector untuk div contenteditable (yang paling sering dipakai TikTok)
             "//div[@contenteditable='true' and @role='textbox']",
             "//div[contains(@class, 'public-DraftEditor-content') and @contenteditable='true']",
             "//div[@aria-label='Send a message...' and @contenteditable='true']",
-            # Selector untuk textarea biasa
             "//textarea[@placeholder='Send a message...']",
             "//textarea[@aria-label='Message']",
             "//textarea",
-            # Backup selector
             "//div[contains(@class, 'DraftEditor-editorContainer')]//div[@contenteditable='true']"
         ]
         
         for selector in textarea_selectors:
             try:
                 print(f"> Mencoba selector: {selector[:50]}...")
-                # Gunakan explicit wait dengan visibility condition
                 element = WebDriverWait(driver, timeout).until(
                     EC.visibility_of_element_located((By.XPATH, selector))
                 )
                 print(f"> Textarea ditemukan! Selector: {selector[:50]}...")
-                print(f"> Debug (textarea found): Driver title = '{driver.title}'")
                 return element
             except:
-                print(f"> Selector tidak cocok: {selector[:50]}...")
                 continue
         
         print("> Textarea tidak ditemukan setelah search semua selector!")
-        print(f"> Debug (textarea failed): Driver title = '{driver.title}'")
         return None
+    
+    def create_webdriver_termux(self):
+        """Create WebDriver specifically for Termux environment"""
+        # Path untuk Termux
+        chromium_paths = [
+            "/data/data/com.termux/files/usr/bin/chromium-browser",
+            "/data/data/com.termux/files/usr/bin/chromium"
+        ]
+        
+        chromedriver_paths = [
+            "/data/data/com.termux/files/usr/bin/chromedriver",
+            "/data/data/com.termux/files/usr/bin/chromedriver.exe"
+        ]
+        
+        chromium_path = None
+        for path in chromium_paths:
+            if os.path.exists(path):
+                chromium_path = path
+                break
+        
+        chromedriver_path = None
+        for path in chromedriver_paths:
+            if os.path.exists(path):
+                chromedriver_path = path
+                break
+        
+        if not chromium_path or not chromedriver_path:
+            print("❌ Chromium atau ChromeDriver tidak ditemukan di Termux!")
+            print("\nInstall dengan perintah:")
+            print("  pkg update && pkg upgrade")
+            print("  pkg install chromium chromedriver")
+            return None
+        
+        print(f"✓ Chromium ditemukan: {chromium_path}")
+        print(f"✓ ChromeDriver ditemukan: {chromedriver_path}")
+        
+        # Setup Chrome options untuk Termux
+        chrome_options = Options()
+        chrome_options.binary_location = chromium_path
+        
+        # Critical options untuk Termux/Proot
+        chrome_options.add_argument("--headless=new")  # Wajib untuk Termux
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-setuid-sandbox")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        
+        # Memory optimization
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=512")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        
+        # User data dir di /tmp (bukan di /root)
+        temp_dir = f"/tmp/chrome-profile-{random.randint(1000, 9999)}"
+        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+        
+        # Window size
+        chrome_options.add_argument("--window-size=1280,720")
+        
+        # Disable features yang bikin crash
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--disable-images")  # Kurangi memory
+        chrome_options.add_argument("--disable-javascript")  # Optional, bisa diaktifkan jika perlu
+        
+        # Logging untuk debug
+        chrome_options.add_argument("--log-level=3")  # ERROR only
+        
+        # Service dengan timeout yang lebih panjang
+        service = Service(
+            chromedriver_path,
+            service_log_path="/tmp/chromedriver.log"
+        )
+        
+        try:
+            driver = webdriver.Chrome(
+                service=service,
+                options=chrome_options
+            )
+            driver.set_page_load_timeout(30)
+            driver.set_script_timeout(30)
+            return driver
+        except Exception as e:
+            print(f"❌ Gagal membuat WebDriver: {e}")
+            return None
     
     def send_dm(self, username, message):
         """Kirim DM ke username tertentu"""
-        
-        # Prepare temp chrome profile folder
-        chrome_profile_dir = "/tmp/chrome-profile"
-        if not os.path.exists(chrome_profile_dir):
-            try:
-                os.makedirs(chrome_profile_dir, exist_ok=True)
-                print(f"> Chrome profile dir siap: {chrome_profile_dir}")
-            except Exception as e:
-                print(f"> Warning: Tidak bisa buat {chrome_profile_dir}: {e}")
         
         print("\n" + "="*60)
         print("  MENGIRIM DM VIA BROWSER")
@@ -140,265 +210,132 @@ class TikTokAutoDM:
         
         print("\n> Membuka browser...")
         
-        # Chromium and ChromeDriver paths
-        chromium_configs = [
-            {
-                "chromium": "/data/data/com.termux/files/usr/bin/chromium-browser",
-                "chromedriver": "/data/data/com.termux/files/usr/bin/chromedriver",
-                "label": "Termux"
-            },
-            {
-                "chromium": "/usr/bin/chromium-browser",
-                "chromedriver": "/usr/bin/chromedriver",
-                "label": "Linux standard"
-            },
-            {
-                "chromium": "/usr/bin/chromium",
-                "chromedriver": "/usr/bin/chromedriver",
-                "label": "Linux (chromium)"
-            },
-            {
-                "chromium": "/snap/bin/chromium",
-                "chromedriver": "/snap/bin/chromium.chromedriver",
-                "label": "Snap"
-            },
-        ]
-        
-        driver = None
-        for config in chromium_configs:
-            chromium_path = config["chromium"]
-            chromedriver_path = config["chromedriver"]
-            label = config["label"]
-            
-            if os.path.exists(chromium_path) and os.path.exists(chromedriver_path):
-                try:
-                    print(f"> Mencoba Chrome Driver ({label}): {chromedriver_path}")
-                    
-                    chrome_options = Options()
-                    chrome_options.binary_location = chromium_path
-                    chrome_options.add_argument("--headless=new")
-                    chrome_options.add_argument("--window-size=1280,720")
-                    chrome_options.add_argument("--disable-gpu")
-                    chrome_options.add_argument("--no-sandbox")
-                    chrome_options.add_argument("--disable-dev-shm-usage")
-                    chrome_options.add_argument("--single-process")
-                    chrome_options.add_argument("--no-zygote")
-                    chrome_options.add_argument("--disable-software-rasterizer")
-                    chrome_options.add_argument("--disable-extensions")
-                    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-                    chrome_options.add_argument("--remote-debugging-port=9222")
-                    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-                    # Memory pressure fix (CRITICAL untuk Proot/container tanpa /dev/shm)
-                    chrome_options.add_argument("--memory-pressure-off")
-                    chrome_options.add_argument("--disable-breakpad")
-                    chrome_options.add_argument("--disable-crash-reporter")
-                    # Gunakan /tmp untuk profile (lebih stable dari /root)
-                    chrome_options.add_argument("--user-data-dir=/tmp/chrome-profile")
-                    
-                    service = Service(chromedriver_path)
-                    driver = webdriver.Chrome(
-                        service=service,
-                        options=chrome_options
-                    )
-                    print(f" Berhasil dengan {label}")
-                    break
-                except Exception as e:
-                    print(f"  Gagal: {str(e)[:80]}...")
-                    continue
-        
+        # Create WebDriver khusus Termux
+        driver = self.create_webdriver_termux()
         if driver is None:
-            print("\n❌ Semua Chrome Driver gagal!")
-            print("\n💡 Untuk Termux:")
-            print("   Pastikan Chromium sudah terinstall:")
-            print("      apt update && apt install -y chromium-browser")
-            print("   Verify:")
-            print("      chromium-browser --version")
-            print("      which chromedriver")
-            print("\n💡 Untuk Linux Desktop:")
-            print("   1. Install Chromium:")
-            print("      apt update && apt install -y chromium-browser chromium-chromedriver")
-            print("   2. Verify:")
-            print("      which chromium-browser")
-            print("      which chromedriver")
+            print("\n❌ Gagal membuat WebDriver untuk Termux!")
             return False
         
-        # Buka TikTok
-        print("> Membuka TikTok...")
-        driver.get("https://www.tiktok.com")
-        print(f"> Debug (after navigate): Driver title = '{driver.title}'")
-        time.sleep(3)
-        
-        # Apply cookies ke browser
-        print("> Memuat cookies...")
-        for cookie in self.cookies:
-            try:
-                clean_cookie = {
-                    'name': cookie.get('name'),
-                    'value': cookie.get('value'),
-                    'domain': cookie.get('domain', '.tiktok.com'),
-                    'path': cookie.get('path', '/')
-                }
-                if cookie.get('secure'):
-                    clean_cookie['secure'] = True
-                
-                driver.add_cookie(clean_cookie)
-            except:
-                pass
-        
-        print("> Cookies loaded")
-        driver.refresh()
-        print(f"> Debug (after refresh): Driver title = '{driver.title}'")
-        
-        # CRITICAL: Wait for page to fully load dengan title yang benar
-        print("> Menunggu halaman TikTok fully load...")
         try:
-            WebDriverWait(driver, 15).until(
-                lambda d: "TikTok" in d.title or "TikTok - Make Your Day" in d.title
-            )
-            print(f"> Halaman TikTok loaded! Title: '{driver.title}'")
-        except:
-            print(f"> Timeout waiting for TikTok title. Current: '{driver.title}'")
-        
-        time.sleep(3)
-        
-        # Buka profile target
-        print(f"\n> Membuka profile @{username}...")
-        driver.get(f"https://www.tiktok.com/@{username}")
-        print(f"> Debug (profile page navigate): Driver title = '{driver.title}'")
-        
-        # Wait for profile page to load
-        try:
-            WebDriverWait(driver, 15).until(
-                lambda d: "@" in d.current_url or username in d.page_source
-            )
-            print(f"> Profile page loaded! URL: {driver.current_url}")
-        except:
-            print(f"> Timeout loading profile page. URL: {driver.current_url}")
-        
-        time.sleep(5)
-        
-        driver.save_screenshot("01_profile_page.png")
-        print("📸 Screenshot: 01_profile_page.png")
-        print(f"> Debug (before message button search): Driver title = '{driver.title}'")
-        
-        try:
-            # Cari tombol Message dengan explicit wait
-            print("> Mencari tombol Message...")
-            msg_selectors = [
-                "//div[@data-testid='tux-web-text' and text()='Message']",
-                "//div[contains(@class, 'tux-web-canary') and text()='Message']",
-                "//button[.//div[text()='Message']]",
-                "//button[contains(@class, 'send-message')]"
-            ]
+            # Buka TikTok dengan timeout
+            print("> Membuka TikTok...")
+            driver.get("https://www.tiktok.com")
+            time.sleep(5)
             
-            msg_btn = None
-            for selector in msg_selectors:
+            # Apply cookies
+            print("> Memuat cookies...")
+            for cookie in self.cookies:
                 try:
-                    # Wait for element dengan timeout 5 detik
-                    msg_btn = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, selector))
-                    )
-                    print(f"> Tombol Message ditemukan dengan selector: {selector[:40]}...")
-                    break
-                except:
-                    continue
-            
-            # Jika dengan clickable gagal, coba presence only
-            if not msg_btn:
-                for selector in msg_selectors:
-                    try:
-                        elements = driver.find_elements(By.XPATH, selector)
-                        for elem in elements:
-                            if elem.is_displayed():
-                                if elem.tag_name == 'div':
-                                    parent_btn = elem.find_element(By.XPATH, './ancestor::button')
-                                    if parent_btn:
-                                        msg_btn = parent_btn
-                                        break
-                                else:
-                                    msg_btn = elem
-                                    break
-                        if msg_btn:
-                            break
-                    except:
-                        continue
-            
-            if msg_btn:
-                print(f"> Debug (before click message): Driver title = '{driver.title}'")
-                driver.execute_script("arguments[0].click();", msg_btn)
-                print("> Tombol Message diklik!")
-                print(f"> Debug (after click message): Driver title = '{driver.title}'")
-                time.sleep(3)
-            else:
-                print("> Tombol Message tidak ditemukan!")
-                print("   Kemungkinan: Akun target tidak bisa di-DM atau belum login sempurna")
-                driver.save_screenshot("02_no_message_button.png")
-                driver.quit()
-                return False
-            
-            # Cari textarea dengan fungsi yang sudah dioptimasi
-            textarea = self.wait_for_textarea(driver)
-            
-            if textarea:
-                print(f"> Debug (textarea found, before scroll): Driver title = '{driver.title}'")
-                
-                # Scroll ke textarea
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", textarea)
-                time.sleep(0.5)
-                print(f"> Debug (after scroll): Driver title = '{driver.title}'")
-                
-                # Klik textarea
-                try:
-                    textarea.click()
-                except:
-                    driver.execute_script("arguments[0].click();", textarea)
-                time.sleep(0.5)
-                print(f"> Debug (after click textarea): Driver title = '{driver.title}'")
-                
-                # Kosongkan textarea
-                try:
-                    textarea.clear()
+                    clean_cookie = {
+                        'name': cookie.get('name'),
+                        'value': cookie.get('value'),
+                        'domain': '.tiktok.com',
+                        'path': '/'
+                    }
+                    if cookie.get('secure'):
+                        clean_cookie['secure'] = True
+                    
+                    driver.add_cookie(clean_cookie)
                 except:
                     pass
-                
-                # Kirim pesan
-                for char in message:
-                    textarea.send_keys(char)
-                    time.sleep(random.uniform(0.03, 0.12))
-                
-                time.sleep(0.5)
-                textarea.send_keys(Keys.RETURN)
-                
-                print(f"\n~~~ PESAN BERHASIL TERKIRIM! ~~~")
-                print(f"   Target: @{username}")
-                print(f"   Pesan: {message}")
-                print(f"   Waktu: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                time.sleep(2)
-                
-                # Screenshot bukti
-                screenshot = f"dm_sent_{username}_{time.strftime('%Y%m%d_%H%M%S')}.png"
-                driver.save_screenshot(screenshot)
-                print(f"📸 Screenshot bukti: {screenshot}")
-                
-                # Log pengiriman
-                with open('dm_log.txt', 'a', encoding='utf-8') as log:
-                    log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] DM ke @{username}: {message}\n")
-                
-                driver.quit()
-                return True
-            else:
-                print("> Textarea tidak ditemukan!")
-                print(f"> Debug (textarea failed): Driver title = '{driver.title}'")
-                driver.save_screenshot("03_no_textarea.png")
-                driver.quit()
-                return False
             
-        except Exception as e:
-            print(f"> Error: {e}")
-            print(f"> Debug (exception): Driver title = '{driver.title if driver else 'N/A'}'")
-            if driver:
+            print("> Cookies loaded")
+            driver.refresh()
+            time.sleep(5)
+            
+            # Buka profile target
+            print(f"\n> Membuka profile @{username}...")
+            driver.get(f"https://www.tiktok.com/@{username}")
+            time.sleep(5)
+            
+            # Screenshot untuk debug
+            driver.save_screenshot("01_profile_page.png")
+            print("📸 Screenshot: 01_profile_page.png")
+            
+            # Cari tombol Message
+            try:
+                print("> Mencari tombol Message...")
+                msg_selectors = [
+                    "//div[@data-testid='tux-web-text' and text()='Message']",
+                    "//button[contains(@class, 'send-message')]",
+                    "//div[contains(text(), 'Message')]"
+                ]
+                
+                msg_btn = None
+                for selector in msg_selectors:
+                    try:
+                        msg_btn = WebDriverWait(driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, selector))
+                        )
+                        print(f"> Tombol Message ditemukan")
+                        break
+                    except:
+                        continue
+                
+                if msg_btn:
+                    driver.execute_script("arguments[0].click();", msg_btn)
+                    print("> Tombol Message diklik!")
+                    time.sleep(3)
+                else:
+                    print("> Tombol Message tidak ditemukan!")
+                    driver.save_screenshot("02_no_message_button.png")
+                    return False
+                
+                # Cari textarea
+                textarea = self.wait_for_textarea(driver)
+                
+                if textarea:
+                    # Scroll dan klik textarea
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", textarea)
+                    time.sleep(1)
+                    
+                    try:
+                        textarea.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", textarea)
+                    time.sleep(1)
+                    
+                    # Kirim pesan
+                    for char in message:
+                        textarea.send_keys(char)
+                        time.sleep(random.uniform(0.03, 0.08))
+                    
+                    time.sleep(0.5)
+                    textarea.send_keys(Keys.RETURN)
+                    
+                    print(f"\n✓✓✓ PESAN BERHASIL TERKIRIM! ✓✓✓")
+                    print(f"   Target: @{username}")
+                    print(f"   Pesan: {message}")
+                    print(f"   Waktu: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    time.sleep(2)
+                    
+                    # Screenshot bukti
+                    screenshot = f"dm_sent_{username}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+                    driver.save_screenshot(screenshot)
+                    print(f"📸 Screenshot bukti: {screenshot}")
+                    
+                    # Log pengiriman
+                    with open('dm_log.txt', 'a', encoding='utf-8') as log:
+                        log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] DM ke @{username}: {message}\n")
+                    
+                    driver.quit()
+                    return True
+                else:
+                    print("> Textarea tidak ditemukan!")
+                    driver.save_screenshot("03_no_textarea.png")
+                    return False
+                
+            except Exception as e:
+                print(f"> Error: {e}")
                 driver.save_screenshot("04_error.png")
+                return False
+            finally:
+                driver.quit()
+                
+        except Exception as e:
+            print(f"> Error utama: {e}")
+            if driver:
                 driver.quit()
             return False
     
@@ -414,7 +351,7 @@ class TikTokAutoDM:
                 success = self.send_dm(username, message)
                 
                 if success:
-                    print("\n---DM berhasil terkirim! ---")
+                    print("\n✓ DM berhasil terkirim!")
                     break
                     
             except Exception as e:
@@ -422,18 +359,16 @@ class TikTokAutoDM:
             
             retry += 1
             if retry < max_retry:
-                print(f"\n> Retry {retry}/{max_retry} dalam 10 detik...")
-                time.sleep(10)
+                print(f"\n> Retry {retry}/{max_retry} dalam 15 detik...")
+                time.sleep(15)
             else:
                 print(f"\n❌ Gagal setelah {max_retry} percobaan")
         
-        print(f"\n> Menunggu jadwal berikutnya...")
-        
         if self.schedule_type == "daily":
-            print(f"> DM terjadwal setiap hari pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
+            print(f"\n> Menunggu jadwal berikutnya setiap hari pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
         elif self.schedule_type == "weekly":
-            day_names = {1:"Senin", 2:"Selasa", 3:"Rabu", 4:"Kamis", 5:"Jumat", 6:"Sabtu", 7:"Minggu"}
-            print(f"> DM terjadwal setiap {day_names.get(self.schedule_day, 'Minggu')} pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
+            day_names = {0:"Senin", 1:"Selasa", 2:"Rabu", 3:"Kamis", 4:"Jumat", 5:"Sabtu", 6:"Minggu"}
+            print(f"\n> Menunggu jadwal berikutnya setiap {day_names.get(self.schedule_day, 'Minggu')} pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
     
     def schedule_daily_dm(self, username, message, hour, minute):
         """Schedule DM setiap hari pada jam tertentu"""
@@ -451,7 +386,7 @@ class TikTokAutoDM:
         self.schedule_type = "weekly"
         self.schedule_hour = hour
         self.schedule_minute = minute
-        self.schedule_day = day + 1
+        self.schedule_day = day
         day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         schedule_time = f"{hour:02d}:{minute:02d}"
         
@@ -498,18 +433,8 @@ def run_schedule_loop():
 def main():
     clear_screen()
     
-    # Cleanup old chrome profile (avoid cache issues)
-    chrome_profile_dir = "/tmp/chrome-profile"
-    if os.path.exists(chrome_profile_dir):
-        try:
-            import shutil
-            shutil.rmtree(chrome_profile_dir)
-            print(f"> Cleanup old chrome profile: {chrome_profile_dir}")
-        except Exception as e:
-            print(f"> Warning: Tidak bisa cleanup profile: {e}")
-    
     print("\n" + "="*60)
-    print("  TIKTOK AUTO DM - BY WXYYDESU")
+    print("  TIKTOK AUTO DM - TERMUX VERSION")
     print("="*60)
     
     bot = TikTokAutoDM()
@@ -520,9 +445,9 @@ def main():
         print("   Harus login dulu (hanya sekali)\n")
         
         if bot.get_cookies_from_input():
-            print("\n> Login berhasil! Silakan jalankan ulang script.")
+            print("\n> Cookies saved! Silakan jalankan ulang script.")
         else:
-            print("\n> Gagal login!")
+            print("\n> Gagal menyimpan cookies!")
         return
     
     # Load cookies
@@ -568,27 +493,12 @@ def main():
         konfirmasi = input("\nKirim DM? (y/n): ").strip().lower()
         
         if konfirmasi == 'y':
-            # Auto-retry logic untuk send sekarang
-            retry = 0
-            max_retry = 3
+            success = bot.send_dm(username, pesan)
             
-            while retry < max_retry:
-                try:
-                    success = bot.send_dm(username, pesan)
-                    
-                    if success:
-                        print("\n--- Pengiriman DM selesai! ---")
-                        break
-                        
-                except Exception as e:
-                    print(f"\n❌ Error: {e}")
-                
-                retry += 1
-                if retry < max_retry:
-                    print(f"\n> Retry {retry}/{max_retry} dalam 10 detik...")
-                    time.sleep(10)
-                else:
-                    print(f"\n❌ Gagal setelah {max_retry} percobaan")
+            if success:
+                print("\n✓ Pengiriman DM selesai!")
+            else:
+                print("\n❌ Pengiriman DM gagal!")
         else:
             print("> Dibatalkan")
     
