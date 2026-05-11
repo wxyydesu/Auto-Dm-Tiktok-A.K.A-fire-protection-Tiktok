@@ -6,12 +6,14 @@ import os
 import schedule
 import threading
 from datetime import datetime
+
+os.environ['DISPLAY'] = ':99'
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 
 class TikTokAutoDM:
     def __init__(self):
@@ -122,13 +124,12 @@ class TikTokAutoDM:
         
         print("\n> Membuka browser...")
         
-        chrome_options = Options()
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options = uc.ChromeOptions()
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
         
-        driver = webdriver.Chrome(options=chrome_options)
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        driver = uc.Chrome(options=chrome_options)
         
         # Buka TikTok
         print("> Membuka TikTok...")
