@@ -1,19 +1,17 @@
 import requests
 import json
 import time
+import re
 import os
 import schedule
-import random
-import subprocess
+import threading
 from datetime import datetime
-
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 
 class TikTokAutoDM:
     def __init__(self):
@@ -26,23 +24,34 @@ class TikTokAutoDM:
         self.schedule_day = None
         
     def load_cookies_from_file(self, filename='cookies_backup.json'):
+        """Load cookies dari file"""
         try:
             with open(filename, 'r', encoding='utf-8') as f:
                 self.cookies = json.load(f)
-            print(f"> Load {len(self.cookies)} cookies dari {filename}")
+            print(f"> Load {len(self.cookies)} cookies dari {filename} <")
             return True
-        except:
+        except FileNotFoundError:
+            print(f"File {filename} tidak ditemukan!")
+            print("   Jalankan script dengan pilihan 1 dulu untuk membuat file cookies")
+            return False
+        except json.JSONDecodeError:
+            print(f"File {filename} corrupt")
             return False
     
     def get_cookies_from_input(self):
+        """Minta user paste cookies dari EditThisCookie"""
         print("\n" + "="*60)
-        print("  EXPORT COOKIES DARI EDITTHISCOOKIE")
+        print("  PANDAUAN EXPORT COOKIES DARI EDITTHISCOOKIE")
         print("="*60)
-        print("1. Buka TikTok di Chrome PC dan login")
-        print("2. Klik icon EditThisCookie V3")
-        print("3. Klik 'Export' -> 'Copy as JSON'")
-        print("4. Paste di bawah ini (ketik 'done' selesai)")
+        print("1. Buka TikTok di Chrome dan login")
+        print("2. Klik icon EditThisCookie V3 di extension")
+        print("3. Klik tombol 'Export' (icon panah keluar)")
+        print("4. Klik 'Copy as JSON'")
+        print("5. Paste di bawah ini")
         print("="*60)
+        
+        print("\n> Paste cookies JSON di sini (ketik 'done' jika sudah paste) <")
+        print("-"*60)
         
         lines = []
         while True:
@@ -51,310 +60,473 @@ class TikTokAutoDM:
                 break
             lines.append(line)
         
+        cookies_text = '\n'.join(lines)
+        
         try:
-            self.cookies = json.loads('\n'.join(lines))
+            self.cookies = json.loads(cookies_text)
+            print(f"\n> Berhasil load {len(self.cookies)} cookies!")
+            
+            # Simpan ke file
             with open('cookies_backup.json', 'w') as f:
                 json.dump(self.cookies, f, indent=2)
-            print(f"✓ Berhasil simpan {len(self.cookies)} cookies")
+            print("> Cookies disimpan di cookies_backup.json")
+            print("   Next time bisa langsung pakai file ini!")
+            
             return True
-        except:
-            print("✗ Gagal parse JSON")
+        except json.JSONDecodeError as e:
+            print(f"\n Format JSON error: {e}")
             return False
     
-    def kill_chrome_processes(self):
-        """Bersihkan proses Chrome yang hang"""
-        os.system("pkill -9 -f chromium 2>/dev/null")
-        os.system("pkill -9 -f chromedriver 2>/dev/null")
-        time.sleep(2)
-    
-    def create_chrome_driver(self):
-        """Buat Chrome driver untuk CLI Termux"""
+    def wait_for_textarea(self, driver, timeout=10):
+        """Optimasi pencarian textarea berdasarkan struktur HTML TikTok"""
+        print("> Mencari textarea...")
         
-        self.kill_chrome_processes()
+        # Selector berdasarkan struktur HTML yang diberikan
+        textarea_selectors = [
+            # Selector untuk div contenteditable (yang paling sering dipakai TikTok)
+            "//div[@contenteditable='true' and @role='textbox']",
+            "//div[contains(@class, 'public-DraftEditor-content') and @contenteditable='true']",
+            "//div[@aria-label='Send a message...' and @contenteditable='true']",
+            # Selector untuk textarea biasa
+            "//textarea[@placeholder='Send a message...']",
+            "//textarea[@aria-label='Message']",
+            "//textarea",
+            # Backup selector
+            "//div[contains(@class, 'DraftEditor-editorContainer')]//div[@contenteditable='true']"
+        ]
         
-        # Cek path
-        chrome_path = "/data/data/com.termux/files/usr/bin/chromium-browser"
-        if not os.path.exists(chrome_path):
-            chrome_path = "/data/data/com.termux/files/usr/bin/chromium"
+        for selector in textarea_selectors:
+            try:
+                element = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.XPATH, selector))
+                )
+                if element and element.is_displayed():
+                    print(f"> Textarea ditemukan dengan selector: {selector[:50]}...")
+                    return element
+            except:
+                continue
         
-        chromedriver_path = "/data/data/com.termux/files/usr/bin/chromedriver"
-        
-        if not os.path.exists(chrome_path) or not os.path.exists(chromedriver_path):
-            print("✗ Install dulu:")
-            print("   pkg install chromium chromedriver")
-            return None
-        
-        print(f"✓ Chrome: {chrome_path}")
-        print(f"✓ ChromeDriver: {chromedriver_path}")
-        
-        # Options untuk headless CLI
-        options = Options()
-        options.binary_location = chrome_path
-        
-        # Headless wajib untuk CLI
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-setuid-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-software-rasterizer")
-        
-        # Memory optimization CRITICAL
-        options.add_argument("--memory-pressure-off")
-        options.add_argument("--max_old_space_size=256")
-        options.add_argument("--js-flags=--max-old-space-size=256")
-        
-        # Disable fitur yang berat
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-plugins")
-        options.add_argument("--disable-images")
-        options.add_argument("--disable-javascript")  # Matikan JS untuk testing
-        
-        # Profile di /tmp
-        profile_dir = f"/tmp/chrome_headless_{int(time.time())}"
-        options.add_argument(f"--user-data-dir={profile_dir}")
-        
-        options.add_argument("--window-size=1280,720")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_argument("--log-level=3")
-        
-        # Remote debugging
-        options.add_argument("--remote-debugging-port=9222")
-        
-        # Environment variables
-        os.environ['TMPDIR'] = '/tmp'
-        os.environ['DISPLAY'] = ':99'  # Virtual display
-        
-        service = Service(chromedriver_path)
-        
-        try:
-            driver = webdriver.Chrome(service=service, options=options)
-            driver.set_page_load_timeout(30)
-            return driver
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            return None
+        print("> Textarea tidak ditemukan!")
+        return None
     
     def send_dm(self, username, message):
+        """Kirim DM ke username tertentu"""
+        
         print("\n" + "="*60)
-        print("  MENGIRIM DM VIA BROWSER (HEADLESS)")
+        print("  MENGIRIM DM VIA BROWSER")
         print("="*60)
         print(f"Target : @{username}")
         print(f"Pesan  : {message}")
         print(f"Waktu  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("="*60)
         
-        driver = self.create_chrome_driver()
-        if not driver:
-            return False
+        print("\n> Membuka browser...")
+        
+        chrome_options = Options()
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        # Buka TikTok
+        print("> Membuka TikTok...")
+        driver.get("https://www.tiktok.com")
+        time.sleep(3)
+        
+        # Apply cookies ke browser
+        print("> Memuat cookies...")
+        for cookie in self.cookies:
+            try:
+                clean_cookie = {
+                    'name': cookie.get('name'),
+                    'value': cookie.get('value'),
+                    'domain': cookie.get('domain', '.tiktok.com'),
+                    'path': cookie.get('path', '/')
+                }
+                if cookie.get('secure'):
+                    clean_cookie['secure'] = True
+                
+                driver.add_cookie(clean_cookie)
+            except:
+                pass
+        
+        print("> Cookies loaded")
+        driver.refresh()
+        time.sleep(5)
+        
+        # Buka profile target
+        print(f"\n> Membuka profile @{username}...")
+        driver.get(f"https://www.tiktok.com/@{username}")
+        time.sleep(5)   
+        
+        driver.save_screenshot("01_profile_page.png")
+        print("📸 Screenshot: 01_profile_page.png")
         
         try:
-            # Buka TikTok
-            print("> Membuka TikTok...")
-            driver.get("https://www.tiktok.com")
-            
-            # Tunggu load
-            for i in range(10):
-                if "tiktok" in driver.current_url.lower():
-                    break
-                time.sleep(1)
-            
-            print(f"  URL: {driver.current_url}")
-            time.sleep(3)
-            
-            # Load cookies
-            print("> Memuat cookies...")
-            for cookie in self.cookies:
-                try:
-                    cookie['domain'] = '.tiktok.com'
-                    if 'sameSite' in cookie:
-                        del cookie['sameSite']
-                    driver.add_cookie(cookie)
-                except:
-                    pass
-            
-            driver.refresh()
-            time.sleep(5)
-            
-            # Buka profile target
-            print(f"> Buka profile @{username}...")
-            driver.get(f"https://www.tiktok.com/@{username}")
-            time.sleep(5)
-            
-            # Screenshot debug
-            driver.save_screenshot("debug_profile.png")
-            print("  Screenshot: debug_profile.png")
-            
-            # Cari tombol Message via JS
+            # Cari tombol Message
             print("> Mencari tombol Message...")
-            js_find_msg = """
-            function findMessageButton() {
-                // Cari button
-                let buttons = document.querySelectorAll('button');
-                for (let btn of buttons) {
-                    if (btn.innerText === 'Message' || btn.textContent.includes('Message')) {
-                        btn.click();
-                        return true;
-                    }
-                }
-                
-                // Cari div dengan role button
-                let divs = document.querySelectorAll('div[role="button"]');
-                for (let div of divs) {
-                    if (div.innerText === 'Message' || div.textContent.includes('Message')) {
-                        div.click();
-                        return true;
-                    }
-                }
-                return false;
-            }
-            return findMessageButton();
-            """
+            msg_selectors = [
+                "//div[@data-testid='tux-web-text' and text()='Message']",
+                "//div[contains(@class, 'tux-web-canary') and text()='Message']",
+                "//button[.//div[text()='Message']]",
+                "//button[contains(@class, 'send-message')]"
+            ]
             
-            msg_clicked = driver.execute_script(js_find_msg)
+            msg_btn = None
+            for selector in msg_selectors:
+                try:
+                    elements = driver.find_elements(By.XPATH, selector)
+                    for elem in elements:
+                        if elem.is_displayed():
+                            if elem.tag_name == 'div':
+                                parent_btn = elem.find_element(By.XPATH, './ancestor::button')
+                                if parent_btn:
+                                    msg_btn = parent_btn
+                                    break
+                            else:
+                                msg_btn = elem
+                                break
+                    if msg_btn:
+                        break
+                except:
+                    continue
             
-            if not msg_clicked:
-                print("✗ Tombol Message tidak ditemukan!")
-                driver.save_screenshot("error_no_message.png")
+            if msg_btn:
+                driver.execute_script("arguments[0].click();", msg_btn)
+                print("> Tombol Message diklik!")
+                time.sleep(3)
+            else:
+                print("> Tombol Message tidak ditemukan!")
+                print("   Kemungkinan: Akun target tidak bisa di-DM")
+                driver.save_screenshot("02_no_message_button.png")
+                driver.quit()
                 return False
             
-            print("✓ Tombol Message diklik!")
-            time.sleep(3)
-            
-            # Cari textarea
-            print("> Mencari textarea...")
-            js_find_textarea = """
-            function findTextarea() {
-                // Cari div contenteditable
-                let editors = document.querySelectorAll('div[contenteditable="true"]');
-                for (let editor of editors) {
-                    if (editor.offsetParent !== null) {
-                        editor.click();
-                        editor.focus();
-                        return editor;
-                    }
-                }
-                
-                // Cari textarea biasa
-                let textareas = document.querySelectorAll('textarea');
-                for (let ta of textareas) {
-                    if (ta.offsetParent !== null) {
-                        ta.click();
-                        ta.focus();
-                        return ta;
-                    }
-                }
-                return null;
-            }
-            return findTextarea();
-            """
-            
-            textarea = driver.execute_script(js_find_textarea)
+            # Cari textarea dengan fungsi yang sudah dioptimasi
+            textarea = self.wait_for_textarea(driver)
             
             if textarea:
-                print("✓ Textarea ditemukan!")
+                # Scroll ke textarea
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", textarea)
+                time.sleep(0.5)
+                
+                # Klik textarea
+                try:
+                    textarea.click()
+                except:
+                    driver.execute_script("arguments[0].click();", textarea)
+                time.sleep(0.5)
+                
+                # Kosongkan textarea
+                try:
+                    textarea.clear()
+                except:
+                    pass
                 
                 # Kirim pesan
                 for char in message:
                     textarea.send_keys(char)
-                    time.sleep(random.uniform(0.03, 0.08))
+                    time.sleep(0.02)
                 
                 time.sleep(0.5)
                 textarea.send_keys(Keys.RETURN)
                 
-                print(f"\n✓✓✓ PESAN BERHASIL TERKIRIM! ✓✓✓")
+                print(f"\n~~~ PESAN BERHASIL TERKIRIM! ~~~")
                 print(f"   Target: @{username}")
                 print(f"   Pesan: {message}")
+                print(f"   Waktu: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                time.sleep(2)
                 
                 # Screenshot bukti
-                screenshot = f"dm_sent_{username}_{int(time.time())}.png"
+                screenshot = f"dm_sent_{username}_{time.strftime('%Y%m%d_%H%M%S')}.png"
                 driver.save_screenshot(screenshot)
-                print(f"  Screenshot: {screenshot}")
+                print(f"📸 Screenshot bukti: {screenshot}")
                 
-                # Log
-                with open('dm_log.txt', 'a') as f:
-                    f.write(f"[{datetime.now()}] DM ke @{username}: {message}\n")
+                # Log pengiriman
+                with open('dm_log.txt', 'a', encoding='utf-8') as log:
+                    log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] DM ke @{username}: {message}\n")
                 
                 driver.quit()
-                self.kill_chrome_processes()
                 return True
             else:
-                print("✗ Textarea tidak ditemukan!")
-                driver.save_screenshot("error_no_textarea.png")
-                return False
-                
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            driver.save_screenshot("error.png")
-            return False
-        finally:
-            try:
+                print(" Textarea tidak ditemukan!")
+                driver.save_screenshot("03_no_textarea.png")
                 driver.quit()
-            except:
-                pass
-            self.kill_chrome_processes()
+                return False
+            
+        except Exception as e:
+            print(f" Error: {e}")
+            driver.save_screenshot("04_error.png")
+            driver.quit()
+            return False
+    
+    def run_scheduled_dm(self, username, message):
+        """Wrapper untuk schedule"""
+        print(f"\n>>> Menjalankan DM terjadwal untuk @{username} <<<")
+        self.send_dm(username, message)
+        print(f"\n> Menunggu jadwal berikutnya...")
+        
+        if self.schedule_type == "daily":
+            print(f"> DM terjadwal setiap hari pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
+        elif self.schedule_type == "weekly":
+            day_names = {1:"Senin", 2:"Selasa", 3:"Rabu", 4:"Kamis", 5:"Jumat", 6:"Sabtu", 7:"Minggu"}
+            print(f"> DM terjadwal setiap {day_names.get(self.schedule_day, 'Minggu')} pukul {self.schedule_hour:02d}:{self.schedule_minute:02d}")
     
     def schedule_daily_dm(self, username, message, hour, minute):
+        """Schedule DM setiap hari pada jam tertentu"""
         self.schedule_type = "daily"
         self.schedule_hour = hour
         self.schedule_minute = minute
         schedule_time = f"{hour:02d}:{minute:02d}"
         schedule.every().day.at(schedule_time).do(self.run_scheduled_dm, username, message)
-        print(f"✓ DM terjadwal setiap hari pukul {schedule_time}")
+        self.scheduled_jobs.append(schedule_time)
+        print(f"> DM terjadwal setiap hari pukul {schedule_time}")
+        return True
     
-    def run_scheduled_dm(self, username, message):
-        print(f"\n>>> Menjalankan DM terjadwal untuk @{username} <<<")
-        self.send_dm(username, message)
+    def schedule_weekly_dm(self, username, message, day, hour, minute):
+        """Schedule DM setiap minggu pada hari dan jam tertentu"""
+        self.schedule_type = "weekly"
+        self.schedule_hour = hour
+        self.schedule_minute = minute
+        self.schedule_day = day + 1
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        schedule_time = f"{hour:02d}:{minute:02d}"
+        
+        if day == 0:
+            schedule.every().monday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 1:
+            schedule.every().tuesday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 2:
+            schedule.every().wednesday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 3:
+            schedule.every().thursday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 4:
+            schedule.every().friday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 5:
+            schedule.every().saturday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        elif day == 6:
+            schedule.every().sunday.at(schedule_time).do(self.run_scheduled_dm, username, message)
+        
+        self.scheduled_jobs.append(f"{day_names[day]} {schedule_time}")
+        print(f"> DM terjadwal setiap {day_names[day]} pukul {schedule_time}")
+        return True
+    
+    def stop_schedule(self):
+        """Stop semua schedule"""
+        schedule.clear()
+        self.scheduled_jobs = []
+        self.schedule_type = None
+        self.schedule_hour = None
+        self.schedule_minute = None
+        self.schedule_day = None
+        print("> Semua jadwal dihentikan")
+
+def clear_screen():
+    """Clear terminal screen"""
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 def run_schedule_loop():
+    """Loop untuk menjalankan schedule"""
+    print("\n> Schedule loop berjalan...\n")
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 def main():
-    os.system('clear')
+    clear_screen()
     
     print("\n" + "="*60)
-    print("  TIKTOK AUTO DM - CLI TERMUX")
+    print("  TIKTOK AUTO DM - BY WXYYDESU")
     print("="*60)
     
     bot = TikTokAutoDM()
     
+    # Cek apakah ada file cookies
     if not os.path.exists('cookies_backup.json'):
-        print("\n⚠️  BELUM ADA COOKIES!")
-        print("   Ambil cookies dari browser PC/laptop")
-        print("   Extension: EditThisCookie\n")
+        print("\n> BELUM ADA COOKIES!")
+        print("   Harus login dulu (hanya sekali)\n")
         
         if bot.get_cookies_from_input():
-            print("\n✓ Cookies saved! Jalankan ulang script.")
+            print("\n> Login berhasil! Silakan jalankan ulang script.")
+        else:
+            print("\n> Gagal login!")
         return
     
-    bot.load_cookies_from_file()
+    # Load cookies
+    if not bot.load_cookies_from_file():
+        return
     
-    username = input("\n> Username target (tanpa @): ").strip()
-    pesan = input("> Pesan: ").strip()
+    # Input target dan pesan
+    print("\n" + "="*60)
+    print("  INPUT DATA")
+    print("="*60)
+    
+    # Input username target
+    while True:
+        username = input("\n> Username target (tanpa @): ").strip()
+        if username:
+            break
+        print("   Username tidak boleh kosong!")
+    
+    # Input pesan
+    pesan = input("\n> Pesan yang akan dikirim: ").strip()
     if not pesan:
         pesan = "Halo!"
     
-    print("\n1. Kirim sekarang")
-    print("2. Kirim terjadwal")
-    pilih = input("\nPilih (1/2): ")
+    # Pilihan kirim sekarang atau schedule
+    print("\n" + "="*60)
+    print("  PILIH METODE PENGIRIMAN")
+    print("="*60)
+    print("1. Kirim sekarang")
+    print("2. Jadwalkan pengiriman")
+    print("="*60)
     
-    if pilih == "1":
-        confirm = input(f"\nKirim ke @{username}? (y/n): ")
-        if confirm.lower() == 'y':
+    pilihan = input("\nPilih (1/2): ").strip()
+    
+    if pilihan == "1":
+        # Kirim sekarang
+        print("\n" + "="*60)
+        print("  KONFIRMASI")
+        print("="*60)
+        print(f"Target : @{username}")
+        print(f"Pesan  : {pesan}")
+        print("="*60)
+        
+        konfirmasi = input("\nKirim DM? (y/n): ").strip().lower()
+        
+        if konfirmasi == 'y':
             bot.send_dm(username, pesan)
-    elif pilih == "2":
-        jam = int(input("Jam (0-23): "))
-        menit = int(input("Menit (0-59): "))
-        bot.schedule_daily_dm(username, pesan, jam, menit)
-        print("\n⏰ Menunggu jadwal... (Ctrl+C untuk stop)")
-        try:
-            run_schedule_loop()
-        except KeyboardInterrupt:
-            print("\n\n> Script dihentikan")
+        else:
+            print("> Dibatalkan")
+    
+    elif pilihan == "2":
+        # Jadwalkan pengiriman
+        print("\n" + "="*60)
+        print("  JADWALKAN PENGIRIMAN")
+        print("="*60)
+        print("1. Setiap hari (daily)")
+        print("2. Setiap minggu (weekly)")
+        print("="*60)
+        
+        jadwal_type = input("\nPilih (1/2): ").strip()
+        
+        if jadwal_type == "1":
+            # Daily schedule
+            while True:
+                try:
+                    jam = int(input("\nJam (0-23): ").strip())
+                    if 0 <= jam <= 23:
+                        break
+                    print("   Jam harus antara 0-23")
+                except:
+                    print("   Masukkan angka yang valid")
+            
+            while True:
+                try:
+                    menit = int(input("Menit (0-59): ").strip())
+                    if 0 <= menit <= 59:
+                        break
+                    print("   Menit harus antara 0-59")
+                except:
+                    print("   Masukkan angka yang valid")
+            
+            print("\n" + "="*60)
+            print("  KONFIRMASI JADWAL")
+            print("="*60)
+            print(f"Target    : @{username}")
+            print(f"Pesan     : {pesan}")
+            print(f"Jadwal    : Setiap hari pukul {jam:02d}:{menit:02d}")
+            print("="*60)
+            
+            konfirmasi = input("\nAktifkan jadwal? (y/n): ").strip().lower()
+            
+            if konfirmasi == 'y':
+                bot.schedule_daily_dm(username, pesan, jam, menit)
+                print(f"\n> Jadwal aktif! DM akan dikirim setiap hari pukul {jam:02d}:{menit:02d}")
+                print("> Script akan berjalan terus... Tekan Ctrl+C untuk berhenti")
+                print("> " + "="*56)
+                
+                try:
+                    run_schedule_loop()
+                except KeyboardInterrupt:
+                    print("\n\n> Script dihentikan oleh user")
+                    bot.stop_schedule()
+            else:
+                print("> Dibatalkan")
+        
+        elif jadwal_type == "2":
+            # Weekly schedule
+            print("\nPilih hari:")
+            print("1. Senin")
+            print("2. Selasa")
+            print("3. Rabu")
+            print("4. Kamis")
+            print("5. Jumat")
+            print("6. Sabtu")
+            print("7. Minggu")
+            
+            while True:
+                try:
+                    hari = int(input("\nPilih (1-7): ").strip())
+                    if 1 <= hari <= 7:
+                        break
+                    print("   Pilihan harus 1-7")
+                except:
+                    print("   Masukkan angka yang valid")
+            
+            while True:
+                try:
+                    jam = int(input("\nJam (0-23): ").strip())
+                    if 0 <= jam <= 23:
+                        break
+                    print("   Jam harus antara 0-23")
+                except:
+                    print("   Masukkan angka yang valid")
+            
+            while True:
+                try:
+                    menit = int(input("Menit (0-59): ").strip())
+                    if 0 <= menit <= 59:
+                        break
+                    print("   Menit harus antara 0-59")
+                except:
+                    print("   Masukkan angka yang valid")
+            
+            day_map = {1:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6}
+            day_names = {1:"Senin", 2:"Selasa", 3:"Rabu", 4:"Kamis", 5:"Jumat", 6:"Sabtu", 7:"Minggu"}
+            
+            print("\n" + "="*60)
+            print("  KONFIRMASI JADWAL")
+            print("="*60)
+            print(f"Target    : @{username}")
+            print(f"Pesan     : {pesan}")
+            print(f"Jadwal    : Setiap {day_names[hari]} pukul {jam:02d}:{menit:02d}")
+            print("="*60)
+            
+            konfirmasi = input("\nAktifkan jadwal? (y/n): ").strip().lower()
+            
+            if konfirmasi == 'y':
+                bot.schedule_weekly_dm(username, pesan, day_map[hari], jam, menit)
+                print(f"\n> Jadwal aktif! DM akan dikirim setiap {day_names[hari]} pukul {jam:02d}:{menit:02d}")
+                print("> Script akan berjalan terus... Tekan Ctrl+C untuk berhenti")
+                print("> " + "="*56)
+                
+                try:
+                    run_schedule_loop()
+                except KeyboardInterrupt:
+                    print("\n\n> Script dihentikan oleh user")
+                    bot.stop_schedule()
+            else:
+                print("> Dibatalkan")
+        
+        else:
+            print("> Pilihan tidak valid")
+    
     else:
-        print("Pilihan tidak valid")
+        print("> Pilihan tidak valid")
 
 if __name__ == "__main__":
     main()
