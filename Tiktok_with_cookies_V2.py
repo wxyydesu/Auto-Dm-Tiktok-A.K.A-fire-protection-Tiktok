@@ -81,9 +81,10 @@ class TikTokAutoDM:
             print(f"\n Format JSON error: {e}")
             return False
     
-    def wait_for_textarea(self, driver, timeout=10):
-        """Optimasi pencarian textarea berdasarkan struktur HTML TikTok"""
+    def wait_for_textarea(self, driver, timeout=15):
+        """Optimasi pencarian textarea berdasarkan struktur HTML TikTok dengan robust waiting"""
         print("> Mencari textarea...")
+        print(f"> Debug (start textarea search): Driver title = '{driver.title}'")
         
         # Selector berdasarkan struktur HTML yang diberikan
         textarea_selectors = [
@@ -101,16 +102,20 @@ class TikTokAutoDM:
         
         for selector in textarea_selectors:
             try:
-                element = WebDriverWait(driver, 3).until(
-                    EC.presence_of_element_located((By.XPATH, selector))
+                print(f"> Mencoba selector: {selector[:50]}...")
+                # Gunakan explicit wait dengan visibility condition
+                element = WebDriverWait(driver, timeout).until(
+                    EC.visibility_of_element_located((By.XPATH, selector))
                 )
-                if element and element.is_displayed():
-                    print(f"> Textarea ditemukan dengan selector: {selector[:50]}...")
-                    return element
+                print(f"> Textarea ditemukan! Selector: {selector[:50]}...")
+                print(f"> Debug (textarea found): Driver title = '{driver.title}'")
+                return element
             except:
+                print(f"> Selector tidak cocok: {selector[:50]}...")
                 continue
         
-        print("> Textarea tidak ditemukan!")
+        print("> Textarea tidak ditemukan setelah search semua selector!")
+        print(f"> Debug (textarea failed): Driver title = '{driver.title}'")
         return None
     
     def send_dm(self, username, message):
@@ -195,10 +200,10 @@ class TikTokAutoDM:
                         service=service,
                         options=chrome_options
                     )
-                    print(f"✅ Berhasil dengan {label}")
+                    print(f" Berhasil dengan {label}")
                     break
                 except Exception as e:
-                    print(f"   ❌ Gagal: {str(e)[:80]}...")
+                    print(f"  Gagal: {str(e)[:80]}...")
                     continue
         
         if driver is None:
@@ -219,12 +224,8 @@ class TikTokAutoDM:
         
         # Buka TikTok
         print("> Membuka TikTok...")
-        try:
-            print(f"> Debug: Driver title = {driver.title}")
-        except:
-            pass
-        
         driver.get("https://www.tiktok.com")
+        print(f"> Debug (after navigate): Driver title = '{driver.title}'")
         time.sleep(3)
         
         # Apply cookies ke browser
@@ -246,18 +247,42 @@ class TikTokAutoDM:
         
         print("> Cookies loaded")
         driver.refresh()
-        time.sleep(5)
+        print(f"> Debug (after refresh): Driver title = '{driver.title}'")
+        
+        # CRITICAL: Wait for page to fully load dengan title yang benar
+        print("> Menunggu halaman TikTok fully load...")
+        try:
+            WebDriverWait(driver, 15).until(
+                lambda d: "TikTok" in d.title or "TikTok - Make Your Day" in d.title
+            )
+            print(f"> Halaman TikTok loaded! Title: '{driver.title}'")
+        except:
+            print(f"> Timeout waiting for TikTok title. Current: '{driver.title}'")
+        
+        time.sleep(3)
         
         # Buka profile target
         print(f"\n> Membuka profile @{username}...")
         driver.get(f"https://www.tiktok.com/@{username}")
-        time.sleep(5)   
+        print(f"> Debug (profile page navigate): Driver title = '{driver.title}'")
+        
+        # Wait for profile page to load
+        try:
+            WebDriverWait(driver, 15).until(
+                lambda d: "@" in d.current_url or username in d.page_source
+            )
+            print(f"> Profile page loaded! URL: {driver.current_url}")
+        except:
+            print(f"> Timeout loading profile page. URL: {driver.current_url}")
+        
+        time.sleep(5)
         
         driver.save_screenshot("01_profile_page.png")
         print("📸 Screenshot: 01_profile_page.png")
+        print(f"> Debug (before message button search): Driver title = '{driver.title}'")
         
         try:
-            # Cari tombol Message
+            # Cari tombol Message dengan explicit wait
             print("> Mencari tombol Message...")
             msg_selectors = [
                 "//div[@data-testid='tux-web-text' and text()='Message']",
@@ -269,29 +294,44 @@ class TikTokAutoDM:
             msg_btn = None
             for selector in msg_selectors:
                 try:
-                    elements = driver.find_elements(By.XPATH, selector)
-                    for elem in elements:
-                        if elem.is_displayed():
-                            if elem.tag_name == 'div':
-                                parent_btn = elem.find_element(By.XPATH, './ancestor::button')
-                                if parent_btn:
-                                    msg_btn = parent_btn
-                                    break
-                            else:
-                                msg_btn = elem
-                                break
-                    if msg_btn:
-                        break
+                    # Wait for element dengan timeout 5 detik
+                    msg_btn = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                    print(f"> Tombol Message ditemukan dengan selector: {selector[:40]}...")
+                    break
                 except:
                     continue
             
+            # Jika dengan clickable gagal, coba presence only
+            if not msg_btn:
+                for selector in msg_selectors:
+                    try:
+                        elements = driver.find_elements(By.XPATH, selector)
+                        for elem in elements:
+                            if elem.is_displayed():
+                                if elem.tag_name == 'div':
+                                    parent_btn = elem.find_element(By.XPATH, './ancestor::button')
+                                    if parent_btn:
+                                        msg_btn = parent_btn
+                                        break
+                                else:
+                                    msg_btn = elem
+                                    break
+                        if msg_btn:
+                            break
+                    except:
+                        continue
+            
             if msg_btn:
+                print(f"> Debug (before click message): Driver title = '{driver.title}'")
                 driver.execute_script("arguments[0].click();", msg_btn)
                 print("> Tombol Message diklik!")
+                print(f"> Debug (after click message): Driver title = '{driver.title}'")
                 time.sleep(3)
             else:
                 print("> Tombol Message tidak ditemukan!")
-                print("   Kemungkinan: Akun target tidak bisa di-DM")
+                print("   Kemungkinan: Akun target tidak bisa di-DM atau belum login sempurna")
                 driver.save_screenshot("02_no_message_button.png")
                 driver.quit()
                 return False
@@ -300,9 +340,12 @@ class TikTokAutoDM:
             textarea = self.wait_for_textarea(driver)
             
             if textarea:
+                print(f"> Debug (textarea found, before scroll): Driver title = '{driver.title}'")
+                
                 # Scroll ke textarea
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", textarea)
                 time.sleep(0.5)
+                print(f"> Debug (after scroll): Driver title = '{driver.title}'")
                 
                 # Klik textarea
                 try:
@@ -310,6 +353,7 @@ class TikTokAutoDM:
                 except:
                     driver.execute_script("arguments[0].click();", textarea)
                 time.sleep(0.5)
+                print(f"> Debug (after click textarea): Driver title = '{driver.title}'")
                 
                 # Kosongkan textarea
                 try:
@@ -344,15 +388,18 @@ class TikTokAutoDM:
                 driver.quit()
                 return True
             else:
-                print(" Textarea tidak ditemukan!")
+                print("> Textarea tidak ditemukan!")
+                print(f"> Debug (textarea failed): Driver title = '{driver.title}'")
                 driver.save_screenshot("03_no_textarea.png")
                 driver.quit()
                 return False
             
         except Exception as e:
-            print(f" Error: {e}")
-            driver.save_screenshot("04_error.png")
-            driver.quit()
+            print(f"> Error: {e}")
+            print(f"> Debug (exception): Driver title = '{driver.title if driver else 'N/A'}'")
+            if driver:
+                driver.save_screenshot("04_error.png")
+                driver.quit()
             return False
     
     def run_scheduled_dm(self, username, message):
