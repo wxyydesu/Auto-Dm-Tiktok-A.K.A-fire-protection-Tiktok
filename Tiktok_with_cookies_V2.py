@@ -127,20 +127,58 @@ class TikTokAutoDM:
         
         chrome_options = uc.ChromeOptions()
         chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-setuid-sandbox")
         chrome_options.add_argument("--single-process")
         chrome_options.add_argument("--no-zygote")
-        chrome_options.add_argument("--window-size=1280,720")
         chrome_options.add_argument("--user-data-dir=/root/tiktok-profile")
         
-        driver = uc.Chrome(
-            options=chrome_options,
-            browser_executable_path="/usr/bin/chromium"
-        )
+        # List of Chromium paths to try
+        chromium_paths = [
+            ("/data/data/com.termux/files/usr/bin/chromium-browser", 146),  # Termux path
+            ("/usr/bin/chromium-browser", None),
+            ("/usr/bin/chromium", None),
+            ("/snap/bin/chromium", None),
+            ("/opt/chromium/chrome", None),
+        ]
+        
+        driver = None
+        for path, version in chromium_paths:
+            if os.path.exists(path):
+                try:
+                    print(f"> Mencoba Chromium: {path}")
+                    if version:
+                        driver = uc.Chrome(
+                            options=chrome_options,
+                            browser_executable_path=path,
+                            version_main=version
+                        )
+                        print(f"✅ Berhasil dengan Chromium {version} di: {path}")
+                    else:
+                        driver = uc.Chrome(
+                            options=chrome_options,
+                            browser_executable_path=path
+                        )
+                        print(f"✅ Berhasil dengan Chromium di: {path}")
+                    break
+                except Exception as e:
+                    print(f"   ❌ Gagal: {str(e)[:80]}...")
+                    continue
+        
+        if driver is None:
+            print("\n❌ Semua path Chromium gagal!")
+            print("\n💡 Untuk Termux proot Ubuntu:")
+            print("   1. Cek versi Chromium:")
+            print("      chromium-browser --version")
+            print("   2. Gunakan path yang sesuai:")
+            print("      dpkg -L chromium | grep bin/chromium")
+            print("\n💡 Untuk Desktop Linux:")
+            print("   1. Install Chromium:")
+            print("      apt update && apt install -y chromium-browser")
+            print("   2. Verify:")
+            print("      which chromium-browser")
+            return False
         
         # Buka TikTok
         print("> Membuka TikTok...")
